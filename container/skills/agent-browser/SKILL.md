@@ -157,3 +157,29 @@ agent-browser get text @e1  # Get product title
 agent-browser get attr @e2 href  # Get link URL
 agent-browser screenshot products.png
 ```
+
+## Sending a screenshot via WhatsApp
+
+After taking a screenshot, write an IPC message to send it to the user:
+
+```bash
+# 1. Take the screenshot — save directly to the group folder
+agent-browser screenshot /workspace/group/screenshot.png
+
+# 2. Write an IPC message — the host will send the image and delete the file
+node -e "
+const fs = require('fs');
+const msg = {
+  type: 'message',
+  chatJid: process.env.NANOCLAW_CHAT_JID,
+  image: 'screenshot.png',
+  caption: 'Here is the screenshot'
+};
+fs.mkdirSync('/workspace/ipc/messages', { recursive: true });
+fs.writeFileSync('/workspace/ipc/messages/img-' + Date.now() + '.json', JSON.stringify(msg));
+"
+```
+
+The host reads the IPC file within ~1 second, sends the image to WhatsApp, and deletes `screenshot.png` from the group folder automatically.
+
+**Receiving images from the user:** When the user sends an image to you, it is saved to `/workspace/group/incoming-<timestamp>-<random>.jpg` and the message content includes `[Image: filename.jpg] optional caption`. Read the file directly to process the image visually (e.g. with `Read` tool or pass the path to a vision tool).

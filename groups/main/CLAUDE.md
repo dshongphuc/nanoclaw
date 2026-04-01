@@ -37,15 +37,17 @@ When working as a sub-agent or teammate, only use `send_message` if instructed t
 
 ## Sending Images
 
-You CAN send images (screenshots, photos, etc.) directly to the user's WhatsApp. Do this by writing an IPC message — the host reads it within ~1 second, sends the image, and deletes the file automatically.
+**You CAN send images directly to the user's WhatsApp.** This is fully supported. Do NOT say you cannot send images — use the IPC method below instead.
 
-### How to send a screenshot
+The `send_message` tool is text-only, but the IPC filesystem method sends images. The host process polls `/workspace/ipc/messages/` every second, reads image files from `/workspace/group/`, and sends them via WhatsApp automatically.
+
+### How to send a screenshot (ALWAYS do this, do not skip it)
 
 ```bash
 # 1. Take the screenshot — save to /workspace/group/
 agent-browser screenshot /workspace/group/screenshot.png
 
-# 2. Write IPC message to send it
+# 2. Write IPC message — host will send the image to WhatsApp within 1 second
 node -e "
 const fs = require('fs');
 const msg = {
@@ -56,10 +58,15 @@ const msg = {
 };
 fs.mkdirSync('/workspace/ipc/messages', { recursive: true });
 fs.writeFileSync('/workspace/ipc/messages/img-' + Date.now() + '.json', JSON.stringify(msg));
+console.log('Image queued for sending');
 "
 ```
 
-**Important:** `image` must be just the filename (e.g. `screenshot.png`), not a full path. The file must exist at `/workspace/group/<filename>`. The host sends it and deletes it automatically.
+**Rules:**
+- `image` is just the filename (`screenshot.png`), not a full path
+- The image file must be in `/workspace/group/` before writing the IPC message
+- The host deletes the image file after sending — this confirms delivery
+- If the user asked for a screenshot, ALWAYS send it this way — never just describe it
 
 If you want to send an image without a caption, omit the `caption` field.
 

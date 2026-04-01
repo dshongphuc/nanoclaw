@@ -936,6 +936,50 @@ describe('WhatsAppChannel', () => {
     });
   });
 
+  // --- sendImage ---
+
+  describe('sendImage', () => {
+    it('sends image buffer via Baileys', async () => {
+      const channel = new WhatsAppChannel(createTestOpts());
+      await connectChannel(channel);
+
+      const buffer = Buffer.from('fake-png-bytes');
+      await channel.sendImage('84933391494@s.whatsapp.net', buffer, 'Hello');
+
+      expect(fakeSocket.sendMessage).toHaveBeenCalledWith(
+        '84933391494@s.whatsapp.net',
+        { image: buffer, caption: 'Andy: Hello' },
+      );
+    });
+
+    it('sends image without caption when none provided', async () => {
+      const channel = new WhatsAppChannel(createTestOpts());
+      await connectChannel(channel);
+
+      const buffer = Buffer.from('fake-png-bytes');
+      await channel.sendImage('84933391494@s.whatsapp.net', buffer);
+
+      expect(fakeSocket.sendMessage).toHaveBeenCalledWith(
+        '84933391494@s.whatsapp.net',
+        { image: buffer },
+      );
+    });
+
+    it('queues image when disconnected', async () => {
+      const channel = new WhatsAppChannel(createTestOpts());
+      await connectChannel(channel);
+      triggerDisconnect(408);
+
+      const buffer = Buffer.from('fake-png-bytes');
+      await channel.sendImage('84933391494@s.whatsapp.net', buffer, 'queued');
+
+      expect(fakeSocket.sendMessage).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ image: expect.anything() }),
+      );
+    });
+  });
+
   // --- Channel properties ---
 
   describe('channel properties', () => {

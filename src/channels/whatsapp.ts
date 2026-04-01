@@ -62,6 +62,7 @@ export class WhatsAppChannel implements Channel {
   private connected = false;
   private lidToPhoneMap: Record<string, string> = {};
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
+  private outgoingImageQueue: Array<{ jid: string; buffer: Buffer; caption?: string }> = [];
   private flushing = false;
   private groupSyncTimerStarted = false;
   /** Cache of recently sent messages for retry requests (max 256 entries). */
@@ -390,6 +391,31 @@ export class WhatsAppChannel implements Channel {
     return this.connected;
   }
 
+  async sendImage(jid: string, buffer: Buffer, caption?: string): Promise<void> {
+    const prefixedCaption = caption
+      ? (ASSISTANT_HAS_OWN_NUMBER ? caption : `${ASSISTANT_NAME}: ${caption}`)
+      : undefined;
+
+    if (!this.connected) {
+      this.outgoingImageQueue.push({ jid, buffer, caption: prefixedCaption });
+      logger.info(
+        { jid, queueSize: this.outgoingImageQueue.length },
+        'WA disconnected, image queued',
+      );
+      return;
+    }
+    try {
+      const msg = prefixedCaption
+        ? { image: buffer, caption: prefixedCaption }
+        : { image: buffer };
+      await this.sock.sendMessage(jid, msg);
+      logger.info({ jid, bytes: buffer.length }, 'Image sent');
+    } catch (err) {
+      this.outgoingImageQueue.push({ jid, buffer, caption: prefixedCaption });
+      logger.warn({ jid, err }, 'Failed to send image, queued');
+    }
+  }
+
   ownsJid(jid: string): boolean {
     return jid.endsWith('@g.us') || jid.endsWith('@s.whatsapp.net');
   }
@@ -549,6 +575,13 @@ export class WhatsAppChannel implements Channel {
       }
     } finally {
       this.flushing = false;
+    }
+
+    // Flush queued images
+    const imagesToFlush = [...this.outgoingImageQueue];
+    this.outgoingImageQueue = [];
+    for (const item of imagesToFlush) {
+      await this.sendImage(item.jid, item.buffer, item.caption);
     }
   }
 }

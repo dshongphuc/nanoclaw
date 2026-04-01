@@ -49,7 +49,7 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
-import { findChannel, formatMessages, formatOutbound } from './router.js';
+import { findChannel, formatMessages, formatOutbound, routeOutboundImage } from './router.js';
 import {
   restoreRemoteControl,
   startRemoteControl,
@@ -308,6 +308,17 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       hadError = true;
     }
   });
+
+  // Clean up any incoming image files saved to the group folder during this session
+  const groupDir = resolveGroupFolderPath(group.folder);
+  try {
+    const files = fs.readdirSync(groupDir).filter((f) => f.startsWith('incoming-'));
+    for (const f of files) {
+      fs.unlinkSync(path.join(groupDir, f));
+    }
+  } catch {
+    // Non-fatal — best effort cleanup
+  }
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
@@ -717,6 +728,7 @@ async function main(): Promise<void> {
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
       return channel.sendMessage(jid, text);
     },
+    sendImage: (jid, buffer, caption) => routeOutboundImage(channels, jid, buffer, caption),
     registeredGroups: () => registeredGroups,
     registerGroup,
     syncGroups: async (force: boolean) => {

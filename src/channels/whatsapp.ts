@@ -10,6 +10,7 @@ import {
   makeCacheableSignalKeyStore,
   normalizeMessageContent,
   useMultiFileAuthState,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import type {
   GroupMetadata,
@@ -46,6 +47,7 @@ import {
   RegisteredGroup,
 } from '../types.js';
 import { registerChannel, ChannelOpts } from './registry.js';
+import { resolveGroupFolderPath } from '../group-folder.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -62,7 +64,11 @@ export class WhatsAppChannel implements Channel {
   private connected = false;
   private lidToPhoneMap: Record<string, string> = {};
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
-  private outgoingImageQueue: Array<{ jid: string; buffer: Buffer; caption?: string }> = [];
+  private outgoingImageQueue: Array<{
+    jid: string;
+    buffer: Buffer;
+    caption?: string;
+  }> = [];
   private flushing = false;
   private groupSyncTimerStarted = false;
   /** Cache of recently sent messages for retry requests (max 256 entries). */
@@ -290,9 +296,31 @@ export class WhatsAppChannel implements Channel {
             let content =
               normalized.conversation ||
               normalized.extendedTextMessage?.text ||
-              normalized.imageMessage?.caption ||
               normalized.videoMessage?.caption ||
               '';
+
+            // Handle inbound image: download and save to group folder
+            if (normalized.imageMessage) {
+              try {
+                const buffer = await downloadMediaMessage(
+                  msg,
+                  'buffer',
+                  {},
+                ) as Buffer;
+                const groupDir = resolveGroupFolderPath(groups[chatJid].folder);
+                const filename = `incoming-${Date.now()}.jpg`;
+                const filePath = path.join(groupDir, filename);
+                fs.writeFileSync(filePath, buffer);
+                const caption = normalized.imageMessage.caption || '';
+                content = caption
+                  ? `[Image: ${filename}] ${caption}`
+                  : `[Image: ${filename}]`;
+                logger.info({ chatJid, filename }, 'Inbound image saved');
+              } catch (err) {
+                logger.error({ err, chatJid }, 'Failed to download inbound image');
+                content = normalized.imageMessage.caption || '[Image: download failed]';
+              }
+            }
 
             // WhatsApp group mentions use the LID in raw text (e.g. "@80355281346633")
             // instead of the display name. Normalize to @AssistantName for trigger matching.
@@ -391,9 +419,15 @@ export class WhatsAppChannel implements Channel {
     return this.connected;
   }
 
-  async sendImage(jid: string, buffer: Buffer, caption?: string): Promise<void> {
+  async sendImage(
+    jid: string,
+    buffer: Buffer,
+    caption?: string,
+  ): Promise<void> {
     const prefixedCaption = caption
-      ? (ASSISTANT_HAS_OWN_NUMBER ? caption : `${ASSISTANT_NAME}: ${caption}`)
+      ? ASSISTANT_HAS_OWN_NUMBER
+        ? caption
+        : `${ASSISTANT_NAME}: ${caption}`
       : undefined;
 
     if (!this.connected) {

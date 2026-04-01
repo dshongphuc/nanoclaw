@@ -8,6 +8,8 @@ vi.mock('../config.js', () => ({
   STORE_DIR: '/tmp/nanoclaw-test-store',
   ASSISTANT_NAME: 'Andy',
   ASSISTANT_HAS_OWN_NUMBER: false,
+  GROUPS_DIR: '/tmp/nanoclaw-test-groups',
+  DATA_DIR: '/tmp/nanoclaw-test-data',
 }));
 
 // Mock logger
@@ -37,6 +39,7 @@ vi.mock('fs', async () => {
       ...actual,
       existsSync: vi.fn(() => true),
       mkdirSync: vi.fn(),
+      writeFileSync: vi.fn(),
     },
   };
 });
@@ -98,10 +101,12 @@ vi.mock('@whiskeysockets/baileys', () => {
       },
       saveCreds: vi.fn(),
     }),
+    downloadMediaMessage: vi.fn().mockResolvedValue(Buffer.from('fake-image')),
   };
 });
 
 import { WhatsAppChannel, WhatsAppChannelOpts } from './whatsapp.js';
+import { downloadMediaMessage } from '@whiskeysockets/baileys';
 import { getLastGroupSync, updateChatName, setLastGroupSync } from '../db.js';
 
 // --- Test helpers ---
@@ -503,7 +508,7 @@ describe('WhatsAppChannel', () => {
 
       expect(opts.onMessage).toHaveBeenCalledWith(
         'registered@g.us',
-        expect.objectContaining({ content: 'Check this photo' }),
+        expect.objectContaining({ content: expect.stringMatching(/^\[Image: incoming-\d+\.jpg\] Check this photo$/) }),
       );
     });
 
@@ -533,6 +538,46 @@ describe('WhatsAppChannel', () => {
         'registered@g.us',
         expect.objectContaining({ content: 'Watch this' }),
       );
+    });
+
+    it('delivers inbound imageMessage as [Image: filename] content', async () => {
+      const onMessage = vi.fn();
+      const channel = new WhatsAppChannel(createTestOpts({ onMessage }));
+      // Use the connectChannel helper pattern that already exists in the test file
+      await connectChannel(channel);
+
+      // Mock fs.writeFileSync to avoid writing actual files
+      const writeFileSyncMock = vi.spyOn(
+        (await import('fs')).default,
+        'writeFileSync',
+      ).mockImplementation(() => {});
+
+      fakeSocket._ev.emit('messages.upsert', {
+        messages: [
+          {
+            key: { remoteJid: 'registered@g.us', fromMe: false },
+            messageTimestamp: 1000,
+            pushName: 'Alice',
+            message: {
+              imageMessage: {
+                caption: 'check this out',
+                mimetype: 'image/jpeg',
+              },
+            },
+          },
+        ],
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(onMessage).toHaveBeenCalledWith(
+        'registered@g.us',
+        expect.objectContaining({
+          content: expect.stringMatching(/^\[Image: incoming-\d+\.jpg\] check this out$/),
+        }),
+      );
+
+      writeFileSyncMock.mockRestore();
     });
 
     it('handles message with no extractable text (e.g. voice note without caption)', async () => {

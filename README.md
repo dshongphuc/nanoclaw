@@ -173,15 +173,19 @@ Yes. NanoClaw supports any Claude API-compatible model endpoint. Set these envir
 
 ```bash
 ANTHROPIC_BASE_URL=https://your-api-endpoint.com
-ANTHROPIC_AUTH_TOKEN=your-token-here
+ANTHROPIC_API_KEY=your-api-key-here
+ANTHROPIC_MODEL=claude-sonnet-4.5   # use the exact model ID your provider expects
 ```
+
+> **Note:** Use `ANTHROPIC_API_KEY` (not `ANTHROPIC_AUTH_TOKEN`) — Claude Code reads `ANTHROPIC_API_KEY` regardless of the key format or prefix. Also set `ANTHROPIC_MODEL` to the exact model ID string your provider uses (providers often use dot-separated versions like `claude-sonnet-4.5` rather than `claude-sonnet-4-5`).
 
 This allows you to use:
 - Local models via [Ollama](https://ollama.ai) with an API proxy
 - Open-source models hosted on [Together AI](https://together.ai), [Fireworks](https://fireworks.ai), etc.
 - Custom model deployments with Anthropic-compatible APIs
+- GitHub Copilot-based proxies (e.g. `aitokens.io.vn`)
 
-Note: The model must support the Anthropic API format for best compatibility.
+Note: The model must support the Anthropic Messages API format for best compatibility.
 
 **How do I debug issues?**
 

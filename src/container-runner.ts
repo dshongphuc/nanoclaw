@@ -248,6 +248,14 @@ async function buildContainerArgs(
     );
   }
 
+  // Pass through 3rd-party model endpoint vars if set in the host environment
+  const anthropicVars = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'];
+  for (const varName of anthropicVars) {
+    if (process.env[varName]) {
+      args.push('-e', `${varName}=${process.env[varName]}`);
+    }
+  }
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 

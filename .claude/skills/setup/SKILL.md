@@ -163,10 +163,11 @@ onecli secrets list
 
 If an Anthropic secret is listed, confirm with user: keep or reconfigure? If keeping, skip to step 5.
 
-AskUserQuestion: Do you want to use your **Claude subscription** (Pro/Max) or an **Anthropic API key**?
+AskUserQuestion: Do you want to use your **Claude subscription** (Pro/Max), an **Anthropic API key**, or a **3rd-party API key**?
 
 1. **Claude subscription (Pro/Max)** — description: "Uses your existing Claude Pro or Max subscription. You'll run `claude setup-token` in another terminal to get your token."
 2. **Anthropic API key** — description: "Pay-per-use API key from console.anthropic.com."
+3. **3rd-party API key** — description: "A key from a compatible proxy (e.g. GitHub Copilot proxy, Together AI, Fireworks). Bypasses OneCLI entirely."
 
 #### Subscription path
 
@@ -197,6 +198,19 @@ Ask them to let you know when done.
 **If the user's response happens to contain a token or key** (starts with `sk-ant-`): handle it gracefully — run the `onecli secrets create` command with that value on their behalf.
 
 **After user confirms:** verify with `onecli secrets list` that an Anthropic secret exists. If not, ask again.
+
+#### 3rd-party API key path
+
+Ask the user for their endpoint URL, API key, and which model ID to use (tell them to check their provider's docs for the exact model string).
+
+Add directly to `.env` — no OneCLI secret needed:
+```bash
+ANTHROPIC_BASE_URL=https://their-endpoint.com
+ANTHROPIC_API_KEY=their-key
+ANTHROPIC_MODEL=their-model-id   # e.g. claude-sonnet-4.5 — must match provider's exact ID
+```
+
+These vars are forwarded into every agent container automatically by `container-runner.ts`. Skip to step 5.
 
 ### 4b. Apple Container → Native Credential Proxy
 
@@ -315,6 +329,13 @@ Tell user to test: send a message in their registered chat. Show: `tail -f logs/
 **No response to messages:** Check trigger pattern. Main channel doesn't need prefix. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/nanoclaw.log`.
 
 **Channel not connecting:** Verify the channel's credentials are set in `.env`. Channels auto-enable when their credentials are present. For WhatsApp: check `store/auth/creds.json` exists. For token-based channels: check token values in `.env`. Restart the service after any `.env` change.
+
+**3rd-party API key not reaching the container:** The systemd service must load `.env` at startup so vars like `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_MODEL` are available to `container-runner.ts`. Check that the service unit has `EnvironmentFile=-/path/to/nanoclaw/.env`. If missing, add it and reload:
+```bash
+# Add to ~/.config/systemd/user/nanoclaw.service under [Service]:
+# EnvironmentFile=-/home/<user>/path/to/nanoclaw/.env
+systemctl --user daemon-reload && systemctl --user restart nanoclaw
+```
 
 **Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
 

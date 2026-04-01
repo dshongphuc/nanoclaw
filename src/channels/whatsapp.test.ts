@@ -585,6 +585,46 @@ describe('WhatsAppChannel', () => {
       writeFileSyncMock.mockRestore();
     });
 
+    it('falls back to [Image unavailable] when downloadMediaMessage rejects', async () => {
+      const onMessage = vi.fn();
+      const channel = new WhatsAppChannel(createTestOpts({ onMessage }));
+      await connectChannel(channel);
+
+      vi.mocked(downloadMediaMessage).mockRejectedValueOnce(
+        new Error('network error'),
+      );
+
+      fakeSocket._ev.emit('messages.upsert', {
+        messages: [
+          {
+            key: { remoteJid: 'registered@g.us', fromMe: false },
+            messageTimestamp: 1000,
+            pushName: 'Alice',
+            message: {
+              imageMessage: {
+                caption: 'here is my photo',
+                mimetype: 'image/jpeg',
+              },
+            },
+          },
+        ],
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(onMessage).toHaveBeenCalledWith(
+        'registered@g.us',
+        expect.objectContaining({
+          content: expect.stringMatching(
+            /^\[Image unavailable\].*here is my photo/,
+          ),
+        }),
+      );
+
+      const receivedContent: string = onMessage.mock.calls[0][1].content;
+      expect(receivedContent).not.toMatch(/incoming-/);
+    });
+
     it('handles message with no extractable text (e.g. voice note without caption)', async () => {
       const opts = createTestOpts();
       const channel = new WhatsAppChannel(opts);

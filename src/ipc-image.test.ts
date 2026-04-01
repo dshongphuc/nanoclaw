@@ -50,12 +50,20 @@ describe('processIpcMessage image dispatch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fs.mkdirSync('/tmp/groups/whatsapp_main', { recursive: true });
-    fs.writeFileSync('/tmp/groups/whatsapp_main/screenshot.png', 'fake-image-bytes');
+    fs.writeFileSync(
+      '/tmp/groups/whatsapp_main/screenshot.png',
+      'fake-image-bytes',
+    );
   });
 
   it('reads image file from group folder and calls sendImage', async () => {
     await processIpcMessage(
-      { type: 'message', chatJid: '123@s.whatsapp.net', image: 'screenshot.png', caption: 'here it is' },
+      {
+        type: 'message',
+        chatJid: '123@s.whatsapp.net',
+        image: 'screenshot.png',
+        caption: 'here it is',
+      },
       'whatsapp_main',
       true,
       deps,
@@ -71,13 +79,19 @@ describe('processIpcMessage image dispatch', () => {
 
   it('deletes the image file after sending', async () => {
     await processIpcMessage(
-      { type: 'message', chatJid: '123@s.whatsapp.net', image: 'screenshot.png' },
+      {
+        type: 'message',
+        chatJid: '123@s.whatsapp.net',
+        image: 'screenshot.png',
+      },
       'whatsapp_main',
       true,
       deps,
     );
 
-    expect(fs.existsSync('/tmp/groups/whatsapp_main/screenshot.png')).toBe(false);
+    expect(fs.existsSync('/tmp/groups/whatsapp_main/screenshot.png')).toBe(
+      false,
+    );
   });
 
   it('falls back to sendMessage if image file is missing', async () => {
@@ -117,5 +131,17 @@ describe('processIpcMessage image dispatch', () => {
 
     expect(mockSendMessage).not.toHaveBeenCalled();
     expect(mockSendImage).not.toHaveBeenCalled();
+  });
+
+  it('blocks path traversal in image filename', async () => {
+    await processIpcMessage(
+      { type: 'message', chatJid: '123@s.whatsapp.net', image: '../../etc/passwd' },
+      'whatsapp_main',
+      true,
+      deps,
+    );
+
+    expect(mockSendImage).not.toHaveBeenCalled();
+    expect(mockSendMessage).not.toHaveBeenCalled();
   });
 });

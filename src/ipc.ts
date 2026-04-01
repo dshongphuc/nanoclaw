@@ -157,13 +157,22 @@ export async function processIpcMessage(
 
   // Authorization: non-main groups can only send to their own chat
   if (!isMain && (!targetGroup || targetGroup.folder !== sourceGroup)) {
-    logger.warn({ chatJid: data.chatJid, sourceGroup }, 'Unauthorized IPC message attempt blocked');
+    logger.warn(
+      { chatJid: data.chatJid, sourceGroup },
+      'Unauthorized IPC message attempt blocked',
+    );
     return;
   }
 
   if (data.image) {
     const groupDir = resolveGroupFolderPath(sourceGroup);
-    const imagePath = path.join(groupDir, data.image);
+    const imagePath = path.resolve(groupDir, data.image);
+    // Ensure the resolved path stays within the group directory
+    const rel = path.relative(groupDir, imagePath);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      logger.warn({ imagePath, sourceGroup }, 'IPC image path escapes group directory');
+      return;
+    }
     if (!fs.existsSync(imagePath)) {
       logger.warn({ imagePath }, 'IPC image file not found');
       await deps.sendMessage(data.chatJid, `[Image not found: ${data.image}]`);

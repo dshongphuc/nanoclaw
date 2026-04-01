@@ -302,13 +302,13 @@ export class WhatsAppChannel implements Channel {
             // Handle inbound image: download and save to group folder
             if (normalized.imageMessage) {
               try {
-                const buffer = await downloadMediaMessage(
+                const buffer = (await downloadMediaMessage(
                   msg,
                   'buffer',
                   {},
-                ) as Buffer;
+                )) as Buffer;
                 const groupDir = resolveGroupFolderPath(groups[chatJid].folder);
-                const filename = `incoming-${Date.now()}.jpg`;
+                const filename = `incoming-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
                 const filePath = path.join(groupDir, filename);
                 fs.writeFileSync(filePath, buffer);
                 const caption = normalized.imageMessage.caption || '';
@@ -317,8 +317,11 @@ export class WhatsAppChannel implements Channel {
                   : `[Image: ${filename}]`;
                 logger.info({ chatJid, filename }, 'Inbound image saved');
               } catch (err) {
-                logger.error({ err, chatJid }, 'Failed to download inbound image');
-                content = normalized.imageMessage.caption || '[Image: download failed]';
+                logger.error(
+                  { err, chatJid },
+                  'Failed to download inbound image',
+                );
+                content = `[Image unavailable] ${normalized.imageMessage.caption || ''}`.trim();
               }
             }
 

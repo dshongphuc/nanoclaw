@@ -508,7 +508,11 @@ describe('WhatsAppChannel', () => {
 
       expect(opts.onMessage).toHaveBeenCalledWith(
         'registered@g.us',
-        expect.objectContaining({ content: expect.stringMatching(/^\[Image: incoming-\d+\.jpg\] Check this photo$/) }),
+        expect.objectContaining({
+          content: expect.stringMatching(
+            /^\[Image: incoming-\d+-[a-z0-9]+\.jpg\] Check this photo$/,
+          ),
+        }),
       );
     });
 
@@ -547,10 +551,9 @@ describe('WhatsAppChannel', () => {
       await connectChannel(channel);
 
       // Mock fs.writeFileSync to avoid writing actual files
-      const writeFileSyncMock = vi.spyOn(
-        (await import('fs')).default,
-        'writeFileSync',
-      ).mockImplementation(() => {});
+      const writeFileSyncMock = vi
+        .spyOn((await import('fs')).default, 'writeFileSync')
+        .mockImplementation(() => {});
 
       fakeSocket._ev.emit('messages.upsert', {
         messages: [
@@ -573,7 +576,9 @@ describe('WhatsAppChannel', () => {
       expect(onMessage).toHaveBeenCalledWith(
         'registered@g.us',
         expect.objectContaining({
-          content: expect.stringMatching(/^\[Image: incoming-\d+\.jpg\] check this out$/),
+          content: expect.stringMatching(
+            /^\[Image: incoming-\d+-[a-z0-9]+\.jpg\] check this out$/,
+          ),
         }),
       );
 

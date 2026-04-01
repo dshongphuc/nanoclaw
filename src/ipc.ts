@@ -6,12 +6,13 @@ import { CronExpressionParser } from 'cron-parser';
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
-import { isValidGroupFolder } from './group-folder.js';
+import { isValidGroupFolder, resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
+  sendImage: (jid: string, buffer: Buffer, caption?: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroups: (force: boolean) => Promise<void>;
@@ -74,24 +75,8 @@ export function startIpcWatcher(deps: IpcDeps): void {
             const filePath = path.join(messagesDir, file);
             try {
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-              if (data.type === 'message' && data.chatJid && data.text) {
-                // Authorization: verify this group can send to this chatJid
-                const targetGroup = registeredGroups[data.chatJid];
-                if (
-                  isMain ||
-                  (targetGroup && targetGroup.folder === sourceGroup)
-                ) {
-                  await deps.sendMessage(data.chatJid, data.text);
-                  logger.info(
-                    { chatJid: data.chatJid, sourceGroup },
-                    'IPC message sent',
-                  );
-                } else {
-                  logger.warn(
-                    { chatJid: data.chatJid, sourceGroup },
-                    'Unauthorized IPC message attempt blocked',
-                  );
-                }
+              if (data.type === 'message') {
+                await processIpcMessage(data, sourceGroup, isMain, deps);
               }
               fs.unlinkSync(filePath);
             } catch (err) {
@@ -152,6 +137,49 @@ export function startIpcWatcher(deps: IpcDeps): void {
 
   processIpcFiles();
   logger.info('IPC watcher started (per-group namespaces)');
+}
+
+export async function processIpcMessage(
+  data: {
+    type: string;
+    chatJid?: string;
+    text?: string;
+    image?: string;
+    caption?: string;
+  },
+  sourceGroup: string,
+  isMain: boolean,
+  deps: IpcDeps,
+): Promise<void> {
+  if (!data.chatJid) return;
+  const registeredGroups = deps.registeredGroups();
+  const targetGroup = registeredGroups[data.chatJid];
+
+  // Authorization: non-main groups can only send to their own chat
+  if (!isMain && (!targetGroup || targetGroup.folder !== sourceGroup)) {
+    logger.warn({ chatJid: data.chatJid, sourceGroup }, 'Unauthorized IPC message attempt blocked');
+    return;
+  }
+
+  if (data.image) {
+    const groupDir = resolveGroupFolderPath(sourceGroup);
+    const imagePath = path.join(groupDir, data.image);
+    if (!fs.existsSync(imagePath)) {
+      logger.warn({ imagePath }, 'IPC image file not found');
+      await deps.sendMessage(data.chatJid, `[Image not found: ${data.image}]`);
+      return;
+    }
+    const buffer = fs.readFileSync(imagePath);
+    await deps.sendImage(data.chatJid, buffer, data.caption);
+    fs.unlinkSync(imagePath);
+    logger.info({ chatJid: data.chatJid, image: data.image }, 'IPC image sent');
+    return;
+  }
+
+  if (data.text) {
+    await deps.sendMessage(data.chatJid, data.text);
+    logger.info({ chatJid: data.chatJid, sourceGroup }, 'IPC message sent');
+  }
 }
 
 export async function processTaskIpc(

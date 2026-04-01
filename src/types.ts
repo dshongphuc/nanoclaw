@@ -89,6 +89,8 @@ export interface Channel {
   disconnect(): Promise<void>;
   // Optional: typing indicator. Channels that support it implement it.
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
+  // Optional: send an image. Buffer is the raw image bytes.
+  sendImage?(jid: string, buffer: Buffer, caption?: string): Promise<void>;
   // Optional: sync group/chat names from the platform.
   syncGroups?(force: boolean): Promise<void>;
 }
@@ -106,3 +108,11 @@ export type OnChatMetadata = (
   channel?: string,
   isGroup?: boolean,
 ) => void;
+
+export interface IpcMessage {
+  type: 'message';
+  chatJid: string;
+  text?: string;
+  image?: string;   // filename relative to the group folder (e.g. "screenshot.png")
+  caption?: string; // optional caption to accompany the image
+}
